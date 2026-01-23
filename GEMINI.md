@@ -54,10 +54,11 @@
   "structure": [
     {
       "id": "고유 UUID",
-      "type": "section | label | text_input | text_area | radio_group | checkbox_group",
+      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group",
       "label": "표시 이름",
       "options": ["옵션1", "옵션2"],
       "placeholder": "플레이스홀더",
+      "width_ratio": 1,
       "children": [{ "재귀적 Component" }]
     }
   ]
@@ -69,11 +70,14 @@
 | Type | 용도 | options 필수 | children 허용 |
 |------|------|:------------:|:-------------:|
 | `section` | 그룹핑 컨테이너 | ❌ | ✅ |
+| `row` | 가로 배치 컨테이너 | ❌ | ✅ |
 | `label` | 텍스트 표시 | ❌ | ❌ |
 | `text_input` | 한 줄 입력 | ❌ | ❌ |
 | `text_area` | 여러 줄 입력 | ❌ | ❌ |
 | `radio_group` | 단일 선택 | ✅ | ❌ |
 | `checkbox_group` | 다중 선택 | ✅ | ❌ |
+
+> **Note**: `row` 내부 컴포넌트는 `width_ratio`로 상대 너비 지정 가능 (기본값: 1)
 
 ---
 

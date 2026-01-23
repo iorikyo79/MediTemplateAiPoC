@@ -21,10 +21,11 @@ AI 모델의 System Prompt에 제공되는 스키마 구조:
   "structure": [
     {
       "id": "고유 UUID",
-      "type": "section | label | text_input | text_area | radio_group | checkbox_group",
+      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group",
       "label": "표시 이름",
       "options": ["옵션1", "옵션2"],
       "placeholder": "플레이스홀더 (선택)",
+      "width_ratio": 1,
       "children": [
         { "재귀적 Component 구조" }
       ]
@@ -35,14 +36,17 @@ AI 모델의 System Prompt에 제공되는 스키마 구조:
 
 ### 컴포넌트 타입 정의
 
-| Type | 용도 | options 필수 | children 허용 |
-|------|------|:------------:|:-------------:|
-| `section` | 그룹핑 컨테이너 | ❌ | ✅ |
-| `label` | 텍스트 표시 | ❌ | ❌ |
-| `text_input` | 한 줄 입력 | ❌ | ❌ |
-| `text_area` | 여러 줄 입력 | ❌ | ❌ |
-| `radio_group` | 단일 선택 | ✅ | ❌ |
-| `checkbox_group` | 다중 선택 | ✅ | ❌ |
+| Type | 용도 | options 필수 | children 허용 | width_ratio |
+|------|------|:------------:|:-------------:|:-----------:|
+| `section` | 그룹핑 컨테이너 | ❌ | ✅ | ❌ |
+| `row` | 가로 배치 컨테이너 | ❌ | ✅ | ❌ |
+| `label` | 텍스트 표시 | ❌ | ❌ | ✅ |
+| `text_input` | 한 줄 입력 | ❌ | ❌ | ✅ |
+| `text_area` | 여러 줄 입력 | ❌ | ❌ | ✅ |
+| `radio_group` | 단일 선택 | ✅ | ❌ | ✅ |
+| `checkbox_group` | 다중 선택 | ✅ | ❌ | ✅ |
+
+> **Note**: `width_ratio`는 `row` 내부에서 상대적 너비 비율을 지정합니다 (기본값: 1)
 
 ---
 

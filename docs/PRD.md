@@ -38,6 +38,7 @@ flowchart LR
 - **모델**: Gemini 1.5 Pro (Vision)
 - **지원 컴포넌트**:
   - `Section` - 그룹핑 컨테이너
+  - `Row` - 가로 배치 컨테이너 (width_ratio로 비율 지정)
   - `Label` - 단순 텍스트 라벨
   - `TextInput` - 한 줄 입력
   - `TextArea` - 여러 줄 입력

@@ -23,6 +23,7 @@
 | 타입 | 용도 |
 |------|------|
 | `section` | 그룹핑 컨테이너 (중첩 가능) |
+| `row` | 가로 배치 컨테이너 |
 | `label` | 텍스트 라벨 |
 | `text_input` | 한 줄 입력 |
 | `text_area` | 여러 줄 입력 |
@@ -60,20 +61,18 @@ streamlit run app.py
   "structure": [
     {
       "id": "고유 ID",
-      "type": "section",
-      "label": "섹션 이름",
-      "children": [
-        {
-          "id": "필드 ID",
-          "type": "text_input",
-          "label": "필드 라벨",
-          "placeholder": "입력 힌트"
-        }
-      ]
+      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group",
+      "label": "표시 이름",
+      "options": ["옵션1", "옵션2"],
+      "placeholder": "플레이스홀더 (선택)",
+      "width_ratio": 1,
+      "children": []
     }
   ]
 }
 ```
+
+> **Note**: `row` 타입은 자식 컴포넌트를 가로로 배치하며, 각 자식의 `width_ratio`로 상대 너비를 지정합니다.
 
 ## 📁 프로젝트 구조
 
