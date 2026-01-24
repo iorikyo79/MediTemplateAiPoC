@@ -12,6 +12,7 @@ import json
 import io
 import uuid
 import requests
+import time
 
 # ============================================================================
 # Page Configuration
@@ -71,56 +72,58 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# System Prompt for Gemini (Generation)
+# System Prompts (2-Stage Pipeline)
 # ============================================================================
-SYSTEM_PROMPT = """You are an Expert Medical UI/UX Designer & Data Structurer.
 
-Your task is to analyze the provided image of a medical report form and extract its structure with PIXEL-PERFECT PRECISION.
+# Stage 1: Structure Extraction
+PROMPT_STAGE_1 = """You are an Expert Medical Data Analyst.
+
+Task: Extract the LOGICAL STRUCTURE and CONTENT from the medical form image.
+IGNORE layout, positions, styles, and grid for now. Focus ONLY on content completeness.
 
 INSTRUCTIONS:
-1. **ABSOLUTE GRID LAYOUT**: The page is a **24-column grid**.
-   - For EACH component, calculate its `col_start` (1-24) and `col_width` (1-24).
-   - `col_start`: The starting column index.
-   - `col_width`: How many columns it spans.
-   - Example: A field starting at the very beginning and taking half width -> `start: 1, width: 12`.
-   - Example: A field starting middle and taking 1/4 width -> `start: 13, width: 6`.
+1. Identify all Sections, Labels, Inputs, Options, and Annotations.
+2. Group them strictly by logical hierarchy (Section > Label/Input).
+3. Do NOT omit any text or field.
+4. Extract Checkboxes and Radio buttons as individual items with `group_id`.
+5. For `layout` and `style`, leave them empty or default.
 
-2. **DETACHED CONTROLS**:
-   - Do NOT group Radio buttons or Checkboxes.
-   - Extract them as individual `radio` or `checkbox` components.
-   - Use `group_id` to logically link them (e.g., group_id: "gender").
-   - This allows precise positioning of each option (e.g., "Yes" at col 10, "No" at col 15).
-
-3. **STYLE & COMPONENTS**:
-   - Analyze `style` (font_size, font_weight, border_style).
-   - Use `image_annotation` for body maps or diagrams.
-
-JSON SCHEMA:
+JSON SCHEMA (Skeleton):
 {
   "title": "Form Title",
   "structure": [
     {
-      "id": "uuid",
-      "type": "section | row | label | text_input | text_area | radio | checkbox | image_annotation",
-      "label": "Display Label",
-      "layout": {
-        "col_start": 1 (number, 1-24),
-        "col_width": 24 (number, 1-24)
-      },
-      "style": { "font_weight": "bold", "border_style": "underline", "font_size": "body" },
-      "options": ["OptionValue"], // Only for radio/checkbox (single value present)
-      "group_id": "logical_group_name", // Only for radio/checkbox
-      "placeholder": "...",
-      "image_source": "url",
+      "type": "section | row | label | text_input | radio | checkbox | image_annotation",
+      "label": "Text Content",
+      "options": ["Val"],
+      "group_id": "group",
       "children": []
     }
   ]
 }
 OUTPUT JSON ONLY."""
 
-# ============================================================================
-# System Prompt for Verification
-# ============================================================================
+# Stage 2: Layout & Style Refinement
+PROMPT_STAGE_2 = """You are an Expert UI/UX Designer specialized in Grid Layouts.
+
+Task: Take the provided JSON SKELETON and the ORIGINAL IMAGE.
+Map each component to its PRECISE LOCATION using a 24-Column Absolute Grid.
+
+INSTRUCTIONS:
+1. **ABSOLUTE GRID**: Fill in `layout: { "col_start": X, "col_width": Y }` for EVERY component.
+   - `col_start`: 1-24. `col_width`: 1-24.
+   - Ensure components on the same line have non-overlapping coordinates.
+   - Insert `row` containers where horizontally adjacent items exist.
+
+2. **STYLE**: Fill in `style: { "font_weight": "...", "border_style": "..." }`.
+   - Headlines -> font_size: "header", font_weight: "bold".
+   - Inputs -> border_style: "underline" or "box".
+
+3. **VERIFY**: Ensure the JSON structure exactly matches the provided skeleton, only adding layout/style metadata.
+
+OUTPUT FULL JSON ONLY."""
+
+# Verification Prompt (Unchanged)
 VERIFY_PROMPT = """You are an Expert UI/UX QA Engineer.
 
 Task: Compare the ORIGINAL IMAGE of a medical form with the GENERATED JSON structure.
@@ -141,7 +144,7 @@ Output JSON:
 OUTPUT JSON ONLY."""
 
 # ============================================================================
-# Sample JSON Template (High Fidelity)
+# Sample JSON Template
 # ============================================================================
 SAMPLE_JSON = """{
   "title": "High Fidelity Medical Form",
@@ -177,31 +180,6 @@ SAMPLE_JSON = """{
               "style": { "border_style": "underline" }
             }
           ]
-        },
-        {
-          "type": "row",
-          "children": [
-             {
-              "type": "label",
-              "label": "Gender :",
-              "layout": { "col_start": 1, "col_width": 4 },
-              "style": { "text_align": "right" }
-            },
-            {
-              "type": "radio",
-              "label": "Male",
-              "group_id": "gender",
-              "options": ["Male"],
-              "layout": { "col_start": 6, "col_width": 3 }
-            },
-            {
-              "type": "radio",
-              "label": "Female",
-              "group_id": "gender",
-              "options": ["Female"],
-              "layout": { "col_start": 10, "col_width": 3 }
-            }
-          ]
         }
       ]
     }
@@ -232,8 +210,21 @@ def call_gemini(system_prompt, image_bytes=None, text_content=None, api_key=None
     except Exception as e:
         return False, str(e)
 
-def analyze_image(image_bytes, api_key):
-    return call_gemini(SYSTEM_PROMPT, image_bytes=image_bytes, api_key=api_key)
+def analyze_image_pipeline(image_bytes, api_key, progress_bar=None):
+    """2-Stage Generation Pipeline"""
+    
+    # Stage 1: Structure Extraction
+    if progress_bar: progress_bar.progress(10, text="Stage 1: Extracting Structure & Content...")
+    success, json_skeleton = call_gemini(PROMPT_STAGE_1, image_bytes=image_bytes, api_key=api_key)
+    
+    if not success: return False, json_skeleton
+    
+    # Stage 2: Layout Refinement
+    if progress_bar: progress_bar.progress(50, text="Stage 2: Calculating Absolute Grid & Styles...")
+    success, final_json = call_gemini(PROMPT_STAGE_2, image_bytes=image_bytes, text_content=f"SKELETON JSON:\n{json_skeleton}", api_key=api_key)
+    
+    if progress_bar: progress_bar.progress(100, text="Done!")
+    return success, final_json
 
 def verify_layout(image_bytes, json_str, api_key):
     return call_gemini(VERIFY_PROMPT, image_bytes=image_bytes, text_content=f"Generated JSON:\n{json_str}", api_key=api_key)
@@ -246,7 +237,6 @@ def validate_json(json_str):
         return False, str(e)
 
 def render_styled_label(label: str, style: dict):
-    """스타일 메타데이터를 적용하여 라벨 렌더링"""
     font_size = style.get("font_size", "body")
     font_weight = style.get("font_weight", "regular")
     align = style.get("text_align", "left")
@@ -266,93 +256,61 @@ def render_component(component: dict, depth: int = 0):
     options = component.get("options", [])
     group_id = component.get("group_id", "")
     
-    # ---------------------------------------------------------
-    # Container Types (Section, Row)
-    # ---------------------------------------------------------
     if comp_type == "section":
         with st.expander(f"📁 {label}", expanded=True):
             for child in component.get("children", []):
                 render_component(child, depth + 1)
                 
     elif comp_type == "row":
-        # Absolute Grid Rendering Logic
-        # 1. 자식들을 col_start 순으로 정렬
         children = sorted(component.get("children", []), key=lambda x: x.get("layout", {}).get("col_start", 1))
-        
-        # 2. Spacer를 포함한 전체 컬럼 리스트 구성
         current_cursor = 1
-        layout_plan = [] # (width, component or None)
+        layout_plan = []
         
         for child in children:
             layout = child.get("layout", {})
             start = layout.get("col_start", current_cursor)
             width = layout.get("col_width", 4)
-            
-            # Gap filling
             if start > current_cursor:
-                gap = start - current_cursor
-                layout_plan.append((gap, None)) # Spacer
-                
+                layout_plan.append((start - current_cursor, None))
             layout_plan.append((width, child))
             current_cursor = start + width
             
-        # 3. Streamlit Columns 생성
         if layout_plan:
             widths = [item[0] for item in layout_plan]
-            # 전체 너비가 24를 넘지 않도록 안전장치 (선택사항)
-            
             try:
                 cols = st.columns(widths)
-                
                 for idx, (width, child_comp) in enumerate(layout_plan):
                     with cols[idx]:
-                        if child_comp:
-                            render_component(child_comp, depth + 1)
+                        if child_comp: render_component(child_comp, depth + 1)
             except Exception as e:
-                st.error(f"Layout Error in Row: {str(e)}")
+                st.error(f"Layout Error: {str(e)}")
                         
-    # ---------------------------------------------------------
-    # Leaf Types
-    # ---------------------------------------------------------
     elif comp_type == "label":
         render_styled_label(label, style)
-        
     elif comp_type == "text_input":
         render_styled_label(label, style)
         st.text_input(" ", key=f"in_{comp_id}", label_visibility="collapsed")
-        
     elif comp_type == "text_area":
         render_styled_label(label, style)
         st.text_area(" ", key=f"txt_{comp_id}", label_visibility="collapsed", height=80)
-        
     elif comp_type == "radio":
-        # 개별 Radio (Single value trick)
         st.radio(label, options=options, key=f"rad_{comp_id}_{group_id}")
-        
     elif comp_type == "checkbox":
         st.checkbox(label, key=f"chk_{comp_id}_{group_id}")
-        
     elif comp_type == "image_annotation":
         render_styled_label(label, style)
         img_source = component.get("image_source")
         bg_image = None
         if img_source and img_source.startswith("http"):
             try:
-                # Simple Verify logic to avoid re-downloading large files in a real app
                 response = requests.get(img_source, timeout=3)
                 if response.status_code == 200:
                     bg_image = Image.open(io.BytesIO(response.content))
             except: pass
-            
         if bg_image:
-             st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)",
-                stroke_width=3, stroke_color="red",
-                background_image=bg_image,
-                height=300, key=f"canvas_{comp_id}"
-            )
+             st_canvas(fill_color="rgba(255, 165, 0, 0.3)", stroke_width=3, stroke_color="red", background_image=bg_image, height=300, key=f"canvas_{comp_id}")
         else:
-            st.warning(f"Image load failed: {img_source}")
+            st.warning(f"Image failed: {img_source}")
 
 def render_preview(data):
     st.markdown(f"### 📋 {data.get('title', 'Template')}")
@@ -379,18 +337,19 @@ with col1:
     st.subheader("1. Source & Editor")
     uploaded_file = st.file_uploader("Upload Form Image", type=["jpg", "png"])
     
-    # 1. Generate
-    if uploaded_file and st.button("🚀 Generate JSON Layout", type="primary", use_container_width=True):
+    # 1. Generate (2-Stage Pipeline)
+    if uploaded_file and st.button("🚀 Generate JSON (2-Stage Pipeline)", type="primary", use_container_width=True):
         if not api_key:
             st.error("API Key required")
         else:
-            with st.spinner("Analyzing absolute layout..."):
-                success, res = analyze_image(uploaded_file.getvalue(), api_key)
-                if success:
-                    st.session_state.json_content = res
-                    st.rerun()
-                else:
-                    st.error(res)
+            progress_bar = st.progress(0, text="Starting analysis...")
+            success, res = analyze_image_pipeline(uploaded_file.getvalue(), api_key, progress_bar)
+            if success:
+                st.session_state.json_content = res
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error(res)
                     
     # 2. Verify
     if uploaded_file and st.button("🔍 Verify Layout (AI Agent)", use_container_width=True):
