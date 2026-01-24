@@ -27,8 +27,7 @@
 | `label` | 텍스트 라벨 (스타일링 지원) |
 | `text_input` | 한 줄 입력 |
 | `text_area` | 여러 줄 입력 |
-| `radio_group` | 단일 선택 |
-| `checkbox_group` | 다중 선택 |
+| `radio`, `checkbox` | 개별 선택 옵션 (group_id로 연결) |
 | `image_annotation` | 이미지 기반 마킹 |
 
 ## 🚀 설치 및 실행
@@ -62,11 +61,11 @@ streamlit run app.py
   "structure": [
     {
       "id": "고유 ID",
-      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group | image_annotation",
+      "type": "section | row | label | text_input | text_area | radio | checkbox | image_annotation",
       "label": "표시 이름",
-      "options": ["옵션1", "옵션2"],
-      "placeholder": "플레이스홀더 (선택)",
-      "layout": { "col_span": 24 },
+      "group_id": "smoking", // 라디오/체크박스 그룹 ID
+      "options": ["옵션값"], // 개별 옵션 값 (예: "예")
+      "layout": { "col_start": 3, "col_width": 10 },
       "style": { "font_weight": "bold", "border_style": "underline" },
       "image_source": "이미지 경로",
       "children": []
@@ -75,7 +74,7 @@ streamlit run app.py
 }
 ```
 
-> **Note**: `row` 타입은 **24-Column Grid System**을 기반으로 `layout.col_span`을 사용하여 너비를 정밀하게 제어합니다.
+> **Note**: `layout`의 `col_start`와 `col_width`를 사용하여 24-Grid 내 절대 위치를 지정합니다.
 
 ## 📁 프로젝트 구조
 

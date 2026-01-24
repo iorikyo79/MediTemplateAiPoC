@@ -54,11 +54,12 @@
   "structure": [
     {
       "id": "고유 UUID",
-      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group | image_annotation",
+      "type": "section | row | label | text_input | text_area | radio | checkbox | image_annotation",
       "label": "표시 이름",
-      "layout": { "col_span": 24 },
+      "layout": { "col_start": 3, "col_width": 10 },
       "style": { "font_weight": "bold", "border_style": "underline" },
-      "options": ["옵션1", "옵션2"],
+      "options": ["예"], // radio/checkbox의 경우 선택값
+      "group_id": "smoking", // radio/checkbox 그룹핑용 ID
       "placeholder": "플레이스홀더",
       "children": [{ "재귀적 Component" }]
     }
@@ -75,11 +76,10 @@
 | `label` | 텍스트 표시 | ❌ | ❌ |
 | `text_input` | 한 줄 입력 | ❌ | ❌ |
 | `text_area` | 여러 줄 입력 | ❌ | ❌ |
-| `radio_group` | 단일 선택 | ✅ | ❌ |
-| `checkbox_group` | 다중 선택 | ✅ | ❌ |
+| `radio`, `checkbox` | 개별 선택 옵션 | ✅ | ❌ |
 | `image_annotation` | 이미지 마킹 | ❌ | ❌ |
 
-> **Note**: `row`는 `layout.col_span` (24-grid) 사용
+> **Note**: `layout`의 `col_start`와 `col_width`로 절대 위치 지정 (1-24 grid)
 
 ---
 

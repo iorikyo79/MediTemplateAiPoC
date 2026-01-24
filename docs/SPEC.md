@@ -24,8 +24,8 @@ AI 모델의 System Prompt에 제공되는 스키마 구조:
       "type": "section | row | label | text_input | text_area | radio_group | checkbox_group | image_annotation",
       "label": "표시 이름",
       "layout": {
-        "col_span": 24,
-        "offset": 0
+        "col_start": 1, // 1-24
+        "col_width": 24 // 1-24
       },
       "style": {
         "font_size": "header | body | caption",
@@ -46,18 +46,17 @@ AI 모델의 System Prompt에 제공되는 스키마 구조:
 
 ### 컴포넌트 타입 정의
 
-| Type | 용도 | options 필수 | children 허용 | layout/style |
-|------|------|:------------:|:-------------:|:------------:|
-| `section` | 그룹핑 컨테이너 | ❌ | ✅ | ❌ |
-| `row` | 가로 배치 컨테이너 | ❌ | ✅ | ✅ |
-| `label` | 텍스트 표시 | ❌ | ❌ | ✅ |
-| `text_input` | 한 줄 입력 | ❌ | ❌ | ✅ |
-| `text_area` | 여러 줄 입력 | ❌ | ❌ | ✅ |
-| `radio_group` | 단일 선택 | ✅ | ❌ | ✅ |
-| `checkbox_group` | 다중 선택 | ✅ | ❌ | ✅ |
-| `image_annotation` | 이미지 위 마킹 | ❌ | ❌ | ✅ |
+| Type | 용도 | options 필수 | layout 속성 | children 허용 |
+|------|------|:------------:|:------------:|:-------------:|
+| `section` | 그룹핑 컨테이너 | ❌ | `col_width` | ✅ |
+| `row` | 가로 배치 컨테이너 | ❌ | `col_start/width` | ✅ |
+| `label` | 텍스트 표시 | ❌ | `col_start/width` | ❌ |
+| `text_input` | 한 줄 입력 | ❌ | `col_start/width` | ❌ |
+| `text_area` | 여러 줄 입력 | ❌ | `col_start/width` | ❌ |
+| `radio`, `checkbox` | 개별 선택 옵션 | ✅ (단일값) | `col_start/width` | ❌ |
+| `image_annotation` | 이미지 위 마킹 | ❌ | `col_start/width` | ❌ |
 
-> **Note**: `row`는 24-Column Grid 시스템을 기반으로 `col_span`을 사용하여 너비를 지정합니다.
+> **Note**: 정확한 위치 제어를 위해 `col_start`(시작점)와 `col_width`(너비)를 사용합니다.
 
 ---
 
@@ -72,7 +71,9 @@ Instructions:
 3. 제공된 JSON Schema에 엄격히 맞춰 매핑하라.
 4. 순수 장식 요소는 무시하고 데이터 입력 필드와 섹션에 집중하라.
 5. 불명확한 손글씨는 "[Unclear Text]" 플레이스홀더 사용.
-6. 폰트 크기, 굵기, 정렬 상태를 분석하여 `style` 속성에 매핑하라.
+6. **절대 좌표 분석**: 각 항목의 가로 시작 위치(`col_start`, 1~24)와 너비(`col_width`)를 정확히 계산하라.
+7. **개별 추출**: Radio/Checkbox 그룹을 묶지 말고, 시각적 떨어짐을 표현하기 위해 개별 `radio` / `checkbox` 컴포넌트로 분리하라.
+8. 폰트 크기, 굵기, 정렬 상태를 분석하여 `style` 속성에 매핑하라.
 7. 입력 필드의 형태(박스형 vs 밑줄형)를 `border_style`로 구분하라.
 8. 신체 모형이나 이미지가 포함된 경우 `image_annotation` 컴포넌트를 사용하라.
 9. JSON만 출력. 마크다운 블록이나 설명 텍스트 없이.
