@@ -23,12 +23,13 @@
 | 타입 | 용도 |
 |------|------|
 | `section` | 그룹핑 컨테이너 (중첩 가능) |
-| `row` | 가로 배치 컨테이너 |
-| `label` | 텍스트 라벨 |
+| `row` | 가로 배치 컨테이너 (24-Column Grid) |
+| `label` | 텍스트 라벨 (스타일링 지원) |
 | `text_input` | 한 줄 입력 |
 | `text_area` | 여러 줄 입력 |
 | `radio_group` | 단일 선택 |
 | `checkbox_group` | 다중 선택 |
+| `image_annotation` | 이미지 기반 마킹 |
 
 ## 🚀 설치 및 실행
 
@@ -61,18 +62,20 @@ streamlit run app.py
   "structure": [
     {
       "id": "고유 ID",
-      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group",
+      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group | image_annotation",
       "label": "표시 이름",
       "options": ["옵션1", "옵션2"],
       "placeholder": "플레이스홀더 (선택)",
-      "width_ratio": 1,
+      "layout": { "col_span": 24 },
+      "style": { "font_weight": "bold", "border_style": "underline" },
+      "image_source": "이미지 경로",
       "children": []
     }
   ]
 }
 ```
 
-> **Note**: `row` 타입은 자식 컴포넌트를 가로로 배치하며, 각 자식의 `width_ratio`로 상대 너비를 지정합니다.
+> **Note**: `row` 타입은 **24-Column Grid System**을 기반으로 `layout.col_span`을 사용하여 너비를 정밀하게 제어합니다.
 
 ## 📁 프로젝트 구조
 

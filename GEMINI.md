@@ -54,11 +54,12 @@
   "structure": [
     {
       "id": "고유 UUID",
-      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group",
+      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group | image_annotation",
       "label": "표시 이름",
+      "layout": { "col_span": 24 },
+      "style": { "font_weight": "bold", "border_style": "underline" },
       "options": ["옵션1", "옵션2"],
       "placeholder": "플레이스홀더",
-      "width_ratio": 1,
       "children": [{ "재귀적 Component" }]
     }
   ]
@@ -76,8 +77,9 @@
 | `text_area` | 여러 줄 입력 | ❌ | ❌ |
 | `radio_group` | 단일 선택 | ✅ | ❌ |
 | `checkbox_group` | 다중 선택 | ✅ | ❌ |
+| `image_annotation` | 이미지 마킹 | ❌ | ❌ |
 
-> **Note**: `row` 내부 컴포넌트는 `width_ratio`로 상대 너비 지정 가능 (기본값: 1)
+> **Note**: `row`는 `layout.col_span` (24-grid) 사용
 
 ---
 
