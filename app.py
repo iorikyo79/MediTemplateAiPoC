@@ -1,22 +1,7 @@
 """
 MediTemplate AI - PoC Application
-손그림 의료 폼 이미지를 구조화된 JSON으로 변환하고 실시간 미리보기 제공
-"""
-
-import streamlit as st
-import google.generativeai as genai
-from PIL import Image
-import json
-import io
-import uuid
-import requests
-
-# ============================================================================
-# Page Configuration
-# ============================================================================
-"""
-MediTemplate AI - PoC Application
-손그림 의료 폼 이미지를 구조화된 JSON으로 변환하고 실시간 미리보기 제공
+손그림 의료 폼 이미지를 구조화된 JSON으로 변환하고, 절대 좌표 기반 그리드로 정밀 렌더링하며,
+AI 기반 레이아웃 검증 기능을 제공합니다.
 """
 
 import streamlit as st
@@ -26,6 +11,7 @@ from streamlit_drawable_canvas import st_canvas
 import json
 import io
 import uuid
+import requests
 
 # ============================================================================
 # Page Configuration
@@ -60,157 +46,160 @@ st.markdown("""
         margin-bottom: 1rem;
         border-left: 4px solid #3B82F6;
     }
-    .error-box {
-        background: #FEF2F2;
-        border-radius: 8px;
-        padding: 1rem;
-        border-left: 4px solid #EF4444;
-        color: #991B1B;
-    }
-    .success-box {
+    .verify-box-good {
         background: #F0FDF4;
+        border: 1px solid #22C55E;
         border-radius: 8px;
         padding: 1rem;
-        border-left: 4px solid #22C55E;
-        color: #166534;
+        margin-top: 1rem;
+    }
+    .verify-box-bad {
+        background: #FEF2F2;
+        border: 1px solid #EF4444;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 1rem;
     }
     .stExpander {
         border: 1px solid #E5E7EB;
         border-radius: 8px;
     }
+    div[data-testid="column"] {
+        border: 1px dashed rgba(0,0,0,0.05); /* 그리드 디버깅용 (선택사항) */
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# System Prompt for Gemini
+# System Prompt for Gemini (Generation)
 # ============================================================================
 SYSTEM_PROMPT = """You are an Expert Medical UI/UX Designer & Data Structurer.
 
-Your task is to analyze the provided image of a medical report form and extract its structure.
+Your task is to analyze the provided image of a medical report form and extract its structure with PIXEL-PERFECT PRECISION.
 
 INSTRUCTIONS:
-1. Analyze the provided image of a medical report form carefully.
-2. Extract the logical structure and components.
-3. Map them strictly to the provided JSON Schema.
-4. Ignore strictly decorative elements, focus on data entry fields and sections.
-5. For handwritten text that is unclear, use a placeholder like "[Unclear Text]".
-6. **LAYOUT ANALYSIS**: Use a **24-Column Grid System**. Analyze the relative width and position of each field.
-   - Use `layout.col_span` (1 to 24) to specify width. (e.g., 12=50%, 24=100%).
-   - Use `row` type to group horizontally adjacent fields.
-7. **STYLE ANALYSIS**: Analyze font size, weight, and border styles.
-   - Headers usually have larger/bolder fonts.
-   - Input fields may be Box style or Underline style.
-   - Map these to the `style` object.
-8. **MEDICAL COMPONENTS**: Identify any body diagrams or symbols used for marking.
-   - Use `image_annotation` type for these.
-9. Output JSON ONLY. No markdown block formatting, no explanatory text.
+1. **ABSOLUTE GRID LAYOUT**: The page is a **24-column grid**.
+   - For EACH component, calculate its `col_start` (1-24) and `col_width` (1-24).
+   - `col_start`: The starting column index.
+   - `col_width`: How many columns it spans.
+   - Example: A field starting at the very beginning and taking half width -> `start: 1, width: 12`.
+   - Example: A field starting middle and taking 1/4 width -> `start: 13, width: 6`.
+
+2. **DETACHED CONTROLS**:
+   - Do NOT group Radio buttons or Checkboxes.
+   - Extract them as individual `radio` or `checkbox` components.
+   - Use `group_id` to logically link them (e.g., group_id: "gender").
+   - This allows precise positioning of each option (e.g., "Yes" at col 10, "No" at col 15).
+
+3. **STYLE & COMPONENTS**:
+   - Analyze `style` (font_size, font_weight, border_style).
+   - Use `image_annotation` for body maps or diagrams.
 
 JSON SCHEMA:
 {
-  "title": "Report Template Name (string)",
+  "title": "Form Title",
   "structure": [
     {
-      "id": "unique-uuid-string",
-      "type": "section | row | label | text_input | text_area | radio_group | checkbox_group | image_annotation",
-      "label": "Display name (string)",
+      "id": "uuid",
+      "type": "section | row | label | text_input | text_area | radio | checkbox | image_annotation",
+      "label": "Display Label",
       "layout": {
-        "col_span": 24 (number, 1-24, default 24),
-        "offset": 0 (number, 0-23, optional)
+        "col_start": 1 (number, 1-24),
+        "col_width": 24 (number, 1-24)
       },
-      "style": {
-        "font_size": "header | body | caption" (default body),
-        "font_weight": "bold | regular" (default regular),
-        "text_align": "left | center | right" (default left),
-        "border_style": "box | underline" (default box)
-      },
-      "options": ["option1", "option2"] (required for radio_group/checkbox_group, null otherwise),
-      "placeholder": "Optional placeholder text",
-      "image_source": "Optional image path for annotation",
-      "children": [recursive Component list]
+      "style": { "font_weight": "bold", "border_style": "underline", "font_size": "body" },
+      "options": ["OptionValue"], // Only for radio/checkbox (single value present)
+      "group_id": "logical_group_name", // Only for radio/checkbox
+      "placeholder": "...",
+      "image_source": "url",
+      "children": []
     }
   ]
 }
-
-COMPONENT TYPES:
-- section: Container for grouping related fields
-- row: Horizontal layout container (children arranged in columns)
-- label: Read-only text display
-- text_input: Single line text input
-- text_area: Multi-line text input  
-- radio_group: Single selection from options
-- checkbox_group: Multiple selection from options
-- image_annotation: Image for marking (e.g., pain location)
-
-OUTPUT ONLY THE JSON. No markdown, no explanation."""
+OUTPUT JSON ONLY."""
 
 # ============================================================================
-# Sample JSON Template
+# System Prompt for Verification
+# ============================================================================
+VERIFY_PROMPT = """You are an Expert UI/UX QA Engineer.
+
+Task: Compare the ORIGINAL IMAGE of a medical form with the GENERATED JSON structure.
+
+Evaluate:
+1. **Layout Accuracy**: Do the `col_start` and `col_width` values in JSON accurately reflect the visual position in the image?
+2. **Completeness**: Are any fields missing?
+3. **Control Type**: Are checkboxes/radios correctly identified?
+
+Output JSON:
+{
+  "similarity_score": 85 (0-100),
+  "evaluation_summary": "One sentence summary.",
+  "layout_issues": ["List of specific layout mismatches"],
+  "missing_elements": ["List of missing fields"],
+  "improvement_suggestions": ["Actionable JSON fix suggestions"]
+}
+OUTPUT JSON ONLY."""
+
+# ============================================================================
+# Sample JSON Template (High Fidelity)
 # ============================================================================
 SAMPLE_JSON = """{
-  "title": "Advanced Medical Report Template",
+  "title": "High Fidelity Medical Form",
   "structure": [
     {
-      "id": "sec-1",
       "type": "section",
-      "label": "Patient Demographics",
+      "label": "Patient Info",
+      "layout": { "col_start": 1, "col_width": 24 },
       "children": [
         {
-          "id": "row-1",
           "type": "row",
           "children": [
             {
-              "type": "text_input",
-              "label": "Patient Name",
-              "layout": { "col_span": 8 },
-              "style": { "font_weight": "bold", "border_style": "underline" }
+              "type": "label",
+              "label": "Patient Name :",
+              "layout": { "col_start": 1, "col_width": 4 },
+              "style": { "font_weight": "bold", "text_align": "right" }
             },
             {
               "type": "text_input",
-              "label": "Patient ID",
-              "layout": { "col_span": 8 },
+              "layout": { "col_start": 5, "col_width": 8 },
               "style": { "border_style": "underline" }
             },
+             {
+              "type": "label",
+              "label": "ID :",
+              "layout": { "col_start": 14, "col_width": 2 },
+              "style": { "text_align": "right" }
+            },
             {
               "type": "text_input",
-              "label": "Date of Birth",
-              "layout": { "col_span": 8 },
+              "layout": { "col_start": 16, "col_width": 8 },
               "style": { "border_style": "underline" }
             }
           ]
-        }
-      ]
-    },
-    {
-      "id": "sec-2",
-      "type": "section",
-      "label": "Physical Examination",
-      "children": [
-        {
-          "type": "label",
-          "label": "Mark Pain Location",
-          "style": { "font_weight": "bold", "font_size": "header" }
         },
         {
-          "id": "anno-1",
-          "type": "image_annotation",
-          "label": "Body Map",
-          "layout": { "col_span": 24 },
-          "image_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Human_body_front_and_side_diagrams.svg/358px-Human_body_front_and_side_diagrams.svg.png"
-        },
-        {
-          "id": "row-2",
           "type": "row",
           "children": [
-            {
-              "type": "text_area",
-              "label": "Observations",
-              "layout": { "col_span": 12 }
+             {
+              "type": "label",
+              "label": "Gender :",
+              "layout": { "col_start": 1, "col_width": 4 },
+              "style": { "text_align": "right" }
             },
             {
-              "type": "checkbox_group",
-              "label": "Symptoms",
-              "layout": { "col_span": 12 },
-              "options": ["Swelling", "Redness", "Tenderness"]
+              "type": "radio",
+              "label": "Male",
+              "group_id": "gender",
+              "options": ["Male"],
+              "layout": { "col_start": 6, "col_width": 3 }
+            },
+            {
+              "type": "radio",
+              "label": "Female",
+              "group_id": "gender",
+              "options": ["Female"],
+              "layout": { "col_start": 10, "col_width": 3 }
             }
           ]
         }
@@ -223,190 +212,224 @@ SAMPLE_JSON = """{
 # Core Functions
 # ============================================================================
 
-def analyze_image_with_gemini(image_data: bytes, api_key: str) -> tuple[bool, str]:
-    """이미지를 Gemini Vision API로 전송하여 JSON 구조 생성."""
+def call_gemini(system_prompt, image_bytes=None, text_content=None, api_key=None):
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-3-flash-preview')
         
-        image = Image.open(io.BytesIO(image_data))
-        response = model.generate_content([SYSTEM_PROMPT, image])
-        
+        content = [system_prompt]
+        if image_bytes:
+            content.append(Image.open(io.BytesIO(image_bytes)))
+        if text_content:
+            content.append(text_content)
+            
+        response = model.generate_content(content)
         result = response.text.strip()
         if result.startswith("```"):
             lines = result.split("\n")
             result = "\n".join(lines[1:-1])
-        
         return True, result
     except Exception as e:
-        return False, f"API 오류: {str(e)}"
+        return False, str(e)
 
-def validate_json(json_str: str) -> tuple[bool, dict | str]:
-    """JSON 문자열 파싱 및 구조 검증."""
+def analyze_image(image_bytes, api_key):
+    return call_gemini(SYSTEM_PROMPT, image_bytes=image_bytes, api_key=api_key)
+
+def verify_layout(image_bytes, json_str, api_key):
+    return call_gemini(VERIFY_PROMPT, image_bytes=image_bytes, text_content=f"Generated JSON:\n{json_str}", api_key=api_key)
+
+def validate_json(json_str):
     try:
         data = json.loads(json_str)
-        if "title" not in data or "structure" not in data:
-            return False, "JSON에 'title' 및 'structure' 필드가 필요합니다."
         return True, data
-    except json.JSONDecodeError as e:
-        return False, f"JSON 파싱 오류: {str(e)}"
+    except Exception as e:
+        return False, str(e)
 
 def render_styled_label(label: str, style: dict):
     """스타일 메타데이터를 적용하여 라벨 렌더링"""
     font_size = style.get("font_size", "body")
     font_weight = style.get("font_weight", "regular")
+    align = style.get("text_align", "left")
     
-    css_style = ""
-    if font_size == "header": css_style += "font-size: 1.2rem;"
-    elif font_size == "caption": css_style += "font-size: 0.8rem; color: #666;"
+    css = f"text-align: {align}; margin-bottom: 0.2rem;"
+    if font_size == "header": css += "font-size: 1.2rem;"
+    elif font_size == "caption": css += "font-size: 0.8rem; color: #666;"
+    if font_weight == "bold": css += "font_weight: bold;"
     
-    if font_weight == "bold": css_style += "font_weight: bold;"
-    
-    st.markdown(f"<p style='{css_style} margin-bottom: 0.2rem;'>{label}</p>", unsafe_allow_html=True)
+    st.markdown(f"<div style='{css}'>{label}</div>", unsafe_allow_html=True)
 
-def render_component(component: dict, depth: int = 0) -> None:
-    """JSON 컴포넌트를 Streamlit 위젯으로 재귀적 렌더링 (24-Grid 지원)"""
+def render_component(component: dict, depth: int = 0):
     comp_type = component.get("type", "")
-    label = component.get("label", "Unnamed")
     comp_id = component.get("id", str(uuid.uuid4()))
-    options = component.get("options", [])
-    placeholder = component.get("placeholder", "")
-    children = component.get("children", [])
-    
-    # Grid Layout & Style Extraction
-    layout = component.get("layout", {})
+    label = component.get("label", "")
     style = component.get("style", {})
+    options = component.get("options", [])
+    group_id = component.get("group_id", "")
     
+    # ---------------------------------------------------------
+    # Container Types (Section, Row)
+    # ---------------------------------------------------------
     if comp_type == "section":
         with st.expander(f"📁 {label}", expanded=True):
-            for child in children:
+            for child in component.get("children", []):
                 render_component(child, depth + 1)
-
+                
     elif comp_type == "row":
-        # 24-Column Grid System Implementation
-        # 자식들의 col_span 합이 24가 되도록 비율 계산
-        cols_config = []
-        valid_children = []
+        # Absolute Grid Rendering Logic
+        # 1. 자식들을 col_start 순으로 정렬
+        children = sorted(component.get("children", []), key=lambda x: x.get("layout", {}).get("col_start", 1))
+        
+        # 2. Spacer를 포함한 전체 컬럼 리스트 구성
+        current_cursor = 1
+        layout_plan = [] # (width, component or None)
         
         for child in children:
-            child_layout = child.get("layout", {})
-            span = child_layout.get("col_span", 24)
-            cols_config.append(span)
-            valid_children.append(child)
+            layout = child.get("layout", {})
+            start = layout.get("col_start", current_cursor)
+            width = layout.get("col_width", 4)
             
-        if cols_config:
-            cols = st.columns(cols_config)
-            for idx, child in enumerate(valid_children):
-                with cols[idx]:
-                    render_component(child, depth + 1)
-        
+            # Gap filling
+            if start > current_cursor:
+                gap = start - current_cursor
+                layout_plan.append((gap, None)) # Spacer
+                
+            layout_plan.append((width, child))
+            current_cursor = start + width
+            
+        # 3. Streamlit Columns 생성
+        if layout_plan:
+            widths = [item[0] for item in layout_plan]
+            # 전체 너비가 24를 넘지 않도록 안전장치 (선택사항)
+            
+            try:
+                cols = st.columns(widths)
+                
+                for idx, (width, child_comp) in enumerate(layout_plan):
+                    with cols[idx]:
+                        if child_comp:
+                            render_component(child_comp, depth + 1)
+            except Exception as e:
+                st.error(f"Layout Error in Row: {str(e)}")
+                        
+    # ---------------------------------------------------------
+    # Leaf Types
+    # ---------------------------------------------------------
     elif comp_type == "label":
         render_styled_label(label, style)
         
     elif comp_type == "text_input":
         render_styled_label(label, style)
-        st.text_input(
-            label, 
-            placeholder=placeholder,
-            key=f"input_{comp_id}",
-            label_visibility="collapsed"
-        )
+        st.text_input(" ", key=f"in_{comp_id}", label_visibility="collapsed")
         
     elif comp_type == "text_area":
         render_styled_label(label, style)
-        st.text_area(
-            label, 
-            placeholder=placeholder,
-            key=f"textarea_{comp_id}",
-            label_visibility="collapsed"
-        )
+        st.text_area(" ", key=f"txt_{comp_id}", label_visibility="collapsed", height=80)
+        
+    elif comp_type == "radio":
+        # 개별 Radio (Single value trick)
+        st.radio(label, options=options, key=f"rad_{comp_id}_{group_id}")
+        
+    elif comp_type == "checkbox":
+        st.checkbox(label, key=f"chk_{comp_id}_{group_id}")
         
     elif comp_type == "image_annotation":
         render_styled_label(label, style)
         img_source = component.get("image_source")
-        
         bg_image = None
         if img_source and img_source.startswith("http"):
             try:
-                response = requests.get(img_source, timeout=5)
+                # Simple Verify logic to avoid re-downloading large files in a real app
+                response = requests.get(img_source, timeout=3)
                 if response.status_code == 200:
                     bg_image = Image.open(io.BytesIO(response.content))
-            except Exception:
-                pass
-        
+            except: pass
+            
         if bg_image:
-            # Canvas Component
-            canvas_result = st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)",  # 마킹 색상
-                stroke_width=3,
-                stroke_color="#FF0000",
+             st_canvas(
+                fill_color="rgba(255, 165, 0, 0.3)",
+                stroke_width=3, stroke_color="red",
                 background_image=bg_image,
-                background_color="#eee",
-                height=400,
-                drawing_mode="freedraw",
-                key=f"canvas_{comp_id}",
+                height=300, key=f"canvas_{comp_id}"
             )
         else:
-            st.warning(f"⚠️ 이미지를 로드할 수 없습니다: {img_source}")
+            st.warning(f"Image load failed: {img_source}")
 
-    elif comp_type in ["radio_group", "checkbox_group"]:
-        render_styled_label(label, style)
-        if options:
-            if comp_type == "radio_group":
-                st.radio(label, options, key=f"radio_{comp_id}", label_visibility="collapsed")
-            else:
-                st.multiselect(label, options, key=f"check_{comp_id}", label_visibility="collapsed")
-    
-    else:
-        st.info(f"ℹ️ Unknown type: {comp_type}")
-
-
-def render_preview(data: dict) -> None:
-    st.markdown(f"### 📋 {data.get('title', 'Untitled Template')}")
+def render_preview(data):
+    st.markdown(f"### 📋 {data.get('title', 'Template')}")
     st.divider()
-    for component in data.get("structure", []):
-        render_component(component)
+    for comp in data.get("structure", []):
+        render_component(comp)
 
 # ============================================================================
-# Sidebar & Main UI (Same as before, simplified for brevity)
+# MAIN APP UI
 # ============================================================================
 with st.sidebar:
-    st.markdown("## ⚙️ 설정")
+    st.header("⚙️ Settings")
     api_key = st.text_input("Google AI API Key", type="password")
-    st.markdown("---")
-    st.markdown("### 📦 고급 컴포넌트\n- `Row (Grid)`\n- `Style Options`\n- `Image Annotation`")
-
-st.markdown('<p class="main-header">🏥 MediTemplate AI (Advanced)</p>', unsafe_allow_html=True)
+    
+st.title("🏥 MediTemplate AI (Ver.3)")
+st.markdown("Precision Layout & AI Verification System")
 
 if "json_content" not in st.session_state:
     st.session_state.json_content = SAMPLE_JSON
-
+    
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
-    st.markdown("### 📤 이미지 업로드")
-    uploaded_file = st.file_uploader("Upload Medical Form", type=["jpg", "png"])
+    st.subheader("1. Source & Editor")
+    uploaded_file = st.file_uploader("Upload Form Image", type=["jpg", "png"])
     
-    if uploaded_file and st.button("🚀 JSON 생성", type="primary"):
-        if api_key:
-            with st.spinner("Analyzing..."):
-                success, result = analyze_image_with_gemini(uploaded_file.getvalue(), api_key)
-                if success:
-                    st.session_state.json_content = result
-                    st.rerun()
+    # 1. Generate
+    if uploaded_file and st.button("🚀 Generate JSON Layout", type="primary", use_container_width=True):
+        if not api_key:
+            st.error("API Key required")
         else:
-            st.error("API Key Required")
+            with st.spinner("Analyzing absolute layout..."):
+                success, res = analyze_image(uploaded_file.getvalue(), api_key)
+                if success:
+                    st.session_state.json_content = res
+                    st.rerun()
+                else:
+                    st.error(res)
+                    
+    # 2. Verify
+    if uploaded_file and st.button("🔍 Verify Layout (AI Agent)", use_container_width=True):
+        if not api_key:
+            st.error("API Key required")
+        else:
+            with st.spinner("Compare Image vs JSON..."):
+                success, res = verify_layout(uploaded_file.getvalue(), st.session_state.json_content, api_key)
+                if success:
+                    st.session_state.verify_result = res
+                else:
+                    st.error(res)
+
+    if "verify_result" in st.session_state:
+        try:
+            v_res = json.loads(st.session_state.verify_result)
+            score = v_res.get("similarity_score", 0)
+            color_cls = "verify-box-good" if score >= 80 else "verify-box-bad"
             
-    st.markdown("### ✏️ JSON 에디터")
-    json_input = st.text_area("JSON", value=st.session_state.json_content, height=600, key="json_editor")
-    if json_input != st.session_state.json_content:
-        st.session_state.json_content = json_input
+            st.markdown(f"""
+            <div class="{color_cls}">
+                <h3>Score: {score}/100</h3>
+                <p><strong>📝 Evaluation:</strong> {v_res.get('evaluation_summary')}</p>
+                <p><strong>⚠️ Missing:</strong> {', '.join(v_res.get('missing_elements', []))}</p>
+                <p><strong>💡 Suggestions:</strong> {str(v_res.get('improvement_suggestions'))}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        except:
+            st.warning("Raw Verify Output: " + st.session_state.verify_result)
 
+    st.markdown("### JSON Structure")
+    json_val = st.text_area("JSON", st.session_state.json_content, height=600)
+    if json_val != st.session_state.json_content:
+        st.session_state.json_content = json_val
+        
 with col2:
-    st.markdown("### 👁️ 실시간 미리보기")
-    is_valid, result = validate_json(st.session_state.json_content)
-    if is_valid:
-        render_preview(result)
+    st.subheader("2. Live Preview (Absolute Grid)")
+    valid, res = validate_json(st.session_state.json_content)
+    if valid:
+        render_preview(res)
     else:
-        st.error(f"JSON Error: {result}")
-
+        st.error(f"JSON Error: {res}")
